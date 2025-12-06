@@ -56,6 +56,9 @@ def is_skymovieshd_url(url):
 def is_howblogs_url(url):
     return "howblogs.xyz" in url
 
+def is_filmyfiy_url(url):
+    return "filmyfiy" in url
+
 def get_soup(content):
     """Helper to parse HTML with fallback."""
     try:
@@ -506,6 +509,49 @@ def scrape_skymovieshd(url):
         logging.error(f"SkymoviesHD Scrape Error: {e}")
         return []
 
+def scrape_filmyfiy(url):
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = get_soup(response.content)
+
+        # Strategy 1: Look for specific text
+        download_link = None
+        for a in soup.find_all('a', href=True):
+            text = a.get_text().strip()
+            if "Download 480p 720p 1080p" in text:
+                download_link = a['href']
+                break
+
+        # Strategy 2: If not found, look for any link to linkmake.in
+        if not download_link:
+            for a in soup.find_all('a', href=True):
+                if "linkmake.in" in a['href']:
+                    download_link = a['href']
+                    break
+
+        if not download_link:
+            return []
+
+        # Now scrape the intermediate page
+        response = requests.get(download_link, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = get_soup(response.content)
+
+        links = []
+        for a in soup.find_all('a', href=True):
+            text = a.get_text().strip()
+            href = a['href']
+
+            if "Download" in text and ("480p" in text or "720p" in text or "1080p" in text):
+                links.append({'text': text, 'link': href})
+
+        return links
+    except Exception as e:
+        logging.error(f"Filmyfiy Scrape Error: {e}")
+        return []
+
 # --- MAIN CONTROLLER ---
 
 def get_download_links(url):
@@ -578,6 +624,8 @@ def get_download_links(url):
         links = scrape_hblinks(url)
     elif is_skymovieshd_url(url):
         links = scrape_skymovieshd(url)
+    elif is_filmyfiy_url(url):
+        links = scrape_filmyfiy(url)
     else:
         links = scrape_hdhub4u_page(url)
 
