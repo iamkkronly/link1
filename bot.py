@@ -642,6 +642,16 @@ def get_download_links(url):
 
         safe_quality = html.escape(quality)
 
+        # Check for gadgetsweb in scraped links (e.g. from 4khdhub)
+        if "gadgetsweb.xyz" in original:
+            gw_bypassed = bypass_gadgetsweb(original)
+            if gw_bypassed:
+                # Update original to the bypassed link so further checks can work
+                original = gw_bypassed
+                source_type = "GadgetsWeb->Direct"
+            else:
+                source_type = "GadgetsWeb (Failed)"
+
         if is_hubcloud_url(original):
             hc_results = bypass_hubcloud(original)
             if hc_results:
