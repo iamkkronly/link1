@@ -64,15 +64,42 @@ def get_poster_url(query):
         response = requests.get(url, headers=headers, params={"q": query}, timeout=10)
         response.raise_for_status()
         soup = get_soup(response.content)
+
+        # Try to find the result item container first
+        item = soup.find('li', class_='ipc-metadata-list-summary-item')
+        if item:
+            img = item.find('img', class_='ipc-image')
+            link = item.find('a', href=True)
+
+            poster_url = None
+            imdb_link = None
+
+            if img and img.get('src'):
+                src = img['src']
+                if "@" in src:
+                    poster_url = src.split("@")[0] + "@.jpg"
+                else:
+                    poster_url = src
+
+            if link:
+                imdb_link = "https://www.imdb.com" + link['href']
+                if "?" in imdb_link:
+                    imdb_link = imdb_link.split("?")[0]
+
+            if poster_url:
+                return poster_url, imdb_link
+
+        # Fallback to old method if container structure fails but image is found
         img = soup.find('img', class_='ipc-image')
         if img and img.get('src'):
             src = img['src']
             if "@" in src:
-                return src.split("@")[0] + "@.jpg"
-            return src
+                return src.split("@")[0] + "@.jpg", None
+            return src, None
+
     except Exception as e:
         logging.error(f"Poster Scrape Error: {e}")
-    return None
+    return None, None
 
 def get_google_poster_url(query):
     try:
