@@ -50,6 +50,12 @@ def is_hubcdn_url(url):
 def is_vplink_url(url):
     return "vplink" in url or "short" in url # Basic heuristic based on the image
 
+def is_skymovieshd_url(url):
+    return "skymovieshd" in url
+
+def is_howblogs_url(url):
+    return "howblogs.xyz" in url
+
 def get_soup(content):
     """Helper to parse HTML with fallback."""
     try:
@@ -399,6 +405,28 @@ def bypass_hubdrive(url):
         logging.error(f"HubDrive Error: {e}")
         return None
 
+def bypass_howblogs(url):
+    print(f"Bypassing HowBlogs: {url}")
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = get_soup(response.content)
+
+        links = []
+        # 'cotent-box' is a typo in the website's HTML, do not correct it.
+        content_box = soup.find('div', class_='cotent-box')
+        if content_box:
+            for a in content_box.find_all('a', href=True):
+                href = a['href'].strip()
+                text = a.get_text().strip()
+                if href:
+                    links.append({'text': text or "Download", 'link': href})
+        return links
+    except Exception as e:
+        logging.error(f"HowBlogs Error: {e}")
+        return []
+
 
 # --- SCRAPERS ---
 
@@ -458,6 +486,26 @@ def scrape_hdhub4u_page(url):
         logging.error(f"Hdhub4u Scrape Error: {e}")
         return []
 
+def scrape_skymovieshd(url):
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = get_soup(response.content)
+
+        links = []
+        bolly_div = soup.find('div', class_='Bolly')
+        if bolly_div:
+            for a in bolly_div.find_all('a', href=True):
+                href = a['href'].strip()
+                text = a.get_text().strip()
+                if href and not href.startswith('#') and not href.startswith('javascript'):
+                    links.append({'text': text or "Link", 'link': href})
+        return links
+    except Exception as e:
+        logging.error(f"SkymoviesHD Scrape Error: {e}")
+        return []
+
 # --- MAIN CONTROLLER ---
 
 def get_download_links(url):
@@ -515,10 +563,21 @@ def get_download_links(url):
         # For now, just return the result
         return f"✅ <b>VPLink Processed!</b>\n\n🔗 <a href='{result}'>Result Link</a>"
 
+    if is_howblogs_url(url):
+        results = bypass_howblogs(url)
+        if results:
+            msg = f"✅ <b>HowBlogs Extracted!</b>\n\n"
+            for r in results:
+                msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
+            return msg
+        return f"❌ Failed to extract HowBlogs: {url}"
+
     # Scraping
     links = []
     if "hblinks.dad" in url:
         links = scrape_hblinks(url)
+    elif is_skymovieshd_url(url):
+        links = scrape_skymovieshd(url)
     else:
         links = scrape_hdhub4u_page(url)
 
@@ -580,6 +639,18 @@ def get_download_links(url):
             bypassed = bypass_vplink(original)
             source_type = "VPLink"
         
+        elif is_howblogs_url(original):
+            hb_results = bypass_howblogs(original)
+            if hb_results:
+                message += f"🎬 <b>{safe_quality} (HowBlogs Pack)</b>\n"
+                for r in hb_results:
+                     safe_text = html.escape(r['text'])
+                     message += f"  └ 📦 <a href='{r['link']}'>{safe_text}</a>\n"
+                message += "\n"
+                continue
+            else:
+                source_type = "HowBlogs (Failed)"
+
         message += f"🎬 <b>{safe_quality}</b>\n"
         if bypassed:
             message += f"🟢 <a href='{bypassed}'>Direct Download ({source_type})</a>\n\n"
