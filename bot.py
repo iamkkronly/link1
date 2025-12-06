@@ -741,7 +741,7 @@ async def get_poster_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         loop = asyncio.get_running_loop()
-        poster_url = await loop.run_in_executor(None, get_poster_url, query)
+        poster_url, _ = await loop.run_in_executor(None, get_poster_url, query)
         source = "IMDb"
 
         if not poster_url:
