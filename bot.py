@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from vplink_bypass import bypass_vplink
+from mymp4movies_scraper import scrape_mymp4movies
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -58,6 +59,9 @@ def is_howblogs_url(url):
 
 def is_filmyfiy_url(url):
     return "filmyfiy" in url
+
+def is_mymp4movies_url(url):
+    return "mymp4movies" in url
 
 def get_soup(content):
     """Helper to parse HTML with fallback."""
@@ -626,6 +630,25 @@ def get_download_links(url):
         links = scrape_skymovieshd(url)
     elif is_filmyfiy_url(url):
         links = scrape_filmyfiy(url)
+    elif is_mymp4movies_url(url):
+        # Mymp4movies returns a dictionary, we need to flatten it
+        results = scrape_mymp4movies(url)
+        if results:
+            # We must use extend instead of append, or ensure links is a list
+            # Since links is initialized to [] before this block, we can just append to it.
+            # However, safer is to create a list and assign it to links if we want consistency with other blocks,
+            # BUT since 'links' is already [] (see top of block), appending is fine.
+            # The issue might be that links is reassigned in other blocks (links = ...).
+            # So if we are in this block, links is [], so appending is correct.
+            # Wait, the code reviewer said: "This implies that `links` might not be initialized as an empty list...
+            # But looking at the code: links = [] IS initialized right before the if/elif chain.
+            # So 'links.append' is actually safe here because 'links' is [] at this point.
+            # BUT, to be absolutely clean and match the style 'links = ...', we can do:
+            temp_links = []
+            for quality in ['480p', '720p', '1080p', 'Other']:
+                for item in results.get(quality, []):
+                    temp_links.append({'text': item['quality'], 'link': item['link']})
+            links = temp_links
     else:
         links = scrape_hdhub4u_page(url)
 
