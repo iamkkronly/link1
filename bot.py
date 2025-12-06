@@ -101,6 +101,42 @@ def get_poster_url(query):
         logging.error(f"Poster Scrape Error: {e}")
     return None, None
 
+def get_google_poster_url(query):
+    try:
+        url = f"https://www.google.com/search?q={query}+movie+poster&tbm=isch"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Prioritize Google thumbnails which are usually reliable
+        for img in soup.find_all('img'):
+            src = img.get('src')
+            if src and src.startswith('https://encrypted-tbn0.gstatic.com'):
+                return src
+
+        # Fallback to other images if no thumbnail found (less reliable)
+        for img in soup.find_all('img'):
+            src = img.get('src')
+            if src and src.startswith('http') and 'google' not in src:
+                 return src
+
+    except Exception as e:
+        logging.error(f"Google Scrape Error: {e}")
+    return None
+
+def get_cat_image_url():
+    try:
+        url = "https://api.thecatapi.com/v1/images/search"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if data and len(data) > 0:
+            return data[0]['url']
+    except Exception as e:
+         logging.error(f"Cat API Error: {e}")
+    return None
+
 # --- SEARCH FUNCTION ---
 def search_movies(query):
     print(f"Searching for '{query}'...")
@@ -705,14 +741,25 @@ async def get_poster_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         loop = asyncio.get_running_loop()
-        poster_url, imdb_link = await loop.run_in_executor(None, get_poster_url, query)
+        poster_url = await loop.run_in_executor(None, get_poster_url, query)
+        source = "IMDb"
+
+        if not poster_url:
+            poster_url = await loop.run_in_executor(None, get_google_poster_url, query)
+            source = "Google"
+
+        if not poster_url:
+            poster_url = await loop.run_in_executor(None, get_cat_image_url)
+            source = "CatImages"
 
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
 
         if poster_url:
             caption = f"Poster for: {query}"
-            if imdb_link:
-                caption += f"\n\n🔗 IMDb: {imdb_link}"
+            if source == "Google":
+                caption += " (from Google)"
+            elif source == "CatImages":
+                caption = f"Movie not found. Here is a cat from {source} instead!"
             await update.message.reply_photo(photo=poster_url, caption=caption)
         else:
             await update.message.reply_text("❌ Poster not found.")
