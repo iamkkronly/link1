@@ -28,6 +28,27 @@ logging.basicConfig(
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
+SUPPORTED_DOMAINS = [
+    "1tamilmv.ms", "letsupload.io", "mediafire.com", "skymovieshd.beer", "1tamilmv.esq", "movies4u.rentals",
+    "1tamilmv.moi", "skymovieshd.pink", "skymovieshd.blue", "1tamilmv.fi", "toonrips.in", "1tamilmv.soy",
+    "1tamilmv.ist", "1tamilmv.kim", "1tamilmv.boo", "1tamilmv.pet", "1tamilmv.onl", "skymovieshd.social",
+    "hblinks.pro", "skymovieshd.land", "movies4u.mba", "1tamilmv.tube", "skymovieshd.credit", "1tamilmv.se",
+    "hblinks.dad", "1tamilmv.blue", "cinematickit.org", "1tamilmv.vc", "uhdmovies.tube", "bollyflix.faith",
+    "1tamilmv.dev", "skymovieshd.care", "extraflix.cfd", "1tamilmv.gd", "bollyflix.ist", "movies4u.forex",
+    "1cinevood.co", "desiremovies.nagoya", "xprime4u.live", "vegamovies.gmbh", "1tamilmv.gy", "nexdrive.pro",
+    "1tamilmv.cab", "extraflix.ink", "moviesmod.cafe", "vegamovies.menu", "movies4u.fund", "skymovieshd.army",
+    "cinevood.legal", "cinevood.onl", "savelinks.me", "mlsbd.co", "1cinevood.business", "1tamilmv.dog",
+    "lustmaza.forum", "bollyflix.vc", "skymovieshd.mba", "1cinevood.agency", "dramadrip.com", "topmovies.pet",
+    "1tamilmv.mba", "bollyflix.esq", "movies4u.care", "movies4u.contact", "extraflix.website", "1tamilmv.best",
+    "desiremovies.review", "1tamilmv.rest", "lustmaza.casa", "movies4u.rip", "1cinevood.boutique", "bollyflix.vet",
+    "tollyflix.xyz", "1tamilmv.farm", "desiremovies.party", "uhdmovies.rip", "katmoviehd.run", "m4ulinks.com",
+    "katmoviehd.pictures", "animepahe.si", "supplygang.site", "katmoviehd.observer", "desiremovies.group",
+    "moviesmod.plus", "extraflix.fit", "movies4u.nexus", "uhdmovies.stream", "moviesmod.kids", "sklinker.in",
+    "lustmaza.work", "toonworld4all.me", "viewcrate.cc", "multishows.top", "world4ufree.bet", "bollyflix.miami",
+    "katmoviehd.fans", "xdmovies.site", "cloudmoviez.sbs", "4khdhub.fans", "filecrypt.cc", "hindikdramawatch.in",
+    "1cinevood.world"
+]
+
 # Global Cache for Search Results
 SEARCH_CACHE = {}
 
@@ -458,6 +479,61 @@ def scrape_hdhub4u_page(url):
         logging.error(f"Hdhub4u Scrape Error: {e}")
         return []
 
+def universal_scraper(url):
+    headers = {"User-Agent": USER_AGENT}
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = get_soup(response.content)
+
+        links = []
+
+        # 1. Magnet Links
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            text = a.get_text().strip()
+            if href.startswith("magnet:?"):
+                links.append({'text': "Magnet", 'link': href})
+                continue
+
+            # 2. Torrent Files
+            if href.lower().endswith(".torrent"):
+                links.append({'text': text or "Torrent", 'link': href})
+                continue
+
+            # 3. Known File Hosts (broad list)
+            known_hosts = [
+                "drive.google.com", "mega.nz", "mediafire.com", "1fichier.com",
+                "gofile.io", "pixeldrain.com", "hubcloud", "hubdrive",
+                "katfile.com", "rapidgator.net", "nitroflare.com", "uptobox.com",
+                "letsupload.io", "send.cm", "clicknupload", "dood.wf", "streamtape",
+                "filecrypt.cc"
+            ]
+            if any(host in href for host in known_hosts):
+                # Try to get better text
+                if not text:
+                    text = "Download"
+                    # Maybe infer from URL
+                    for host in known_hosts:
+                        if host in href:
+                            text = host.split('.')[0].capitalize()
+                            break
+                links.append({'text': text, 'link': href})
+                continue
+
+            # 4. Quality/Keywords in Text
+            # Avoid nav links
+            lower_text = text.lower()
+            if any(q in lower_text for q in ['480p', '720p', '1080p', '2160p', 'hevc', 'download link', 'download file']):
+                # Simple heuristic to avoid whole paragraphs
+                if len(text) < 100:
+                    links.append({'text': text, 'link': href})
+
+        return links
+    except Exception as e:
+        logging.error(f"Universal Scraper Error: {e}")
+        return []
+
 # --- MAIN CONTROLLER ---
 
 def get_download_links(url):
@@ -517,8 +593,10 @@ def get_download_links(url):
 
     # Scraping
     links = []
-    if "hblinks.dad" in url:
+    if "hblinks.dad" in url or "hblinks.pro" in url:
         links = scrape_hblinks(url)
+    elif any(d in url for d in SUPPORTED_DOMAINS):
+        links = universal_scraper(url)
     else:
         links = scrape_hdhub4u_page(url)
 
