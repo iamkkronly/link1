@@ -57,6 +57,23 @@ def get_soup(content):
         logging.warning(f"lxml parsing failed ({e}). Falling back to html.parser.")
         return BeautifulSoup(content, 'html.parser')
 
+def get_poster_url(query):
+    try:
+        url = "https://www.imdb.com/find/"
+        headers = {"User-Agent": USER_AGENT}
+        response = requests.get(url, headers=headers, params={"q": query}, timeout=10)
+        response.raise_for_status()
+        soup = get_soup(response.content)
+        img = soup.find('img', class_='ipc-image')
+        if img and img.get('src'):
+            src = img['src']
+            if "@" in src:
+                return src.split("@")[0] + "@.jpg"
+            return src
+    except Exception as e:
+        logging.error(f"Poster Scrape Error: {e}")
+    return None
+
 # --- SEARCH FUNCTION ---
 def search_movies(query):
     print(f"Searching for '{query}'...")
@@ -647,8 +664,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Hi {user.mention_html()}! I am Kaustav Ray's Scraper Bot.\n\n"
         "<b>How to use:</b>\n"
         "1. <b>Send a Link:</b> I will scrape and bypass it.\n"
-        "2. <b>Send a Movie Name:</b> I will search for it."
+        "2. <b>Send a Movie Name:</b> I will search for it.\n"
+        "3. <b>/p Movie Name:</b> I will send the poster."
     )
+
+async def get_poster_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: /p <movie name>")
+        return
+
+    query = ' '.join(context.args)
+    status_msg = await update.message.reply_text(f"🔎 Fetching poster for '{html.escape(query)}'...", parse_mode='HTML')
+
+    try:
+        loop = asyncio.get_running_loop()
+        poster_url = await loop.run_in_executor(None, get_poster_url, query)
+
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
+
+        if poster_url:
+            await update.message.reply_photo(photo=poster_url, caption=f"Poster for: {query}")
+        else:
+            await update.message.reply_text("❌ Poster not found.")
+
+    except Exception as e:
+        await update.message.reply_text(f"Error fetching poster: {html.escape(str(e))}", parse_mode='HTML')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text.strip()
@@ -711,6 +751,7 @@ if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('p', get_poster_command))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     application.add_handler(CallbackQueryHandler(handle_button))
     
