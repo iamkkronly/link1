@@ -592,7 +592,7 @@ def get_download_links(url):
 async def perform_scrape_and_reply(url, update, context):
     chat_id = update.effective_chat.id
     
-    status_msg = await context.bot.send_message(chat_id=chat_id, text=f"⏳ Scraping {html.escape(url)}...\nPlease wait, this may take a moment.", parse_mode='HTML')
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="⏳ Bypassing.....\n\nPlease wait, this may take a moment.", parse_mode='HTML')
     
     try:
         loop = asyncio.get_running_loop()
