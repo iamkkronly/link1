@@ -15,6 +15,7 @@ from urllib.parse import urlparse, parse_qs, urljoin
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from vplink_bypass import bypass_vplink
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -398,107 +399,6 @@ def bypass_hubdrive(url):
         logging.error(f"HubDrive Error: {e}")
         return None
 
-def bypass_vplink(url):
-    """
-    Bypasses vplink.in and similar shorteners.
-    Handles Meta Refresh, Window Location, and Form Submits.
-    """
-    print(f"Bypassing VPLink: {url}")
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Upgrade-Insecure-Requests": "1"
-    }
-    session = requests.Session()
-    session.headers.update(headers)
-    
-    current_url = url
-    max_steps = 10
-    step = 0
-    
-    while step < max_steps:
-        step += 1
-        try:
-            # Check if we reached a final destination
-            domain = urlparse(current_url).netloc
-            if any(x in domain for x in ['hubcloud', 'hubdrive', 'hubcdn', 'gofile.io', 'drive.google', 'mega.nz', 'pixeldrain']):
-                return current_url
-                
-            print(f"VPLink Step {step}: {current_url}")
-            response = session.get(current_url, allow_redirects=True, timeout=15)
-            current_url = response.url # Update URL if redirected by requests
-            
-            # Re-check domain after redirect
-            domain = urlparse(current_url).netloc
-            if any(x in domain for x in ['hubcloud', 'hubdrive', 'hubcdn', 'gofile.io', 'drive.google', 'mega.nz', 'pixeldrain']):
-                return current_url
-
-            soup = get_soup(response.content)
-            
-            # 1. Check for Meta Refresh
-            meta = soup.find("meta", attrs={"http-equiv": re.compile("refresh", re.I)})
-            if meta:
-                content = meta.get("content", "")
-                if "url=" in content.lower():
-                    next_url = content.split("url=")[-1].strip()
-                    current_url = urljoin(current_url, next_url)
-                    time.sleep(1)
-                    continue
-
-            # 2. Check for JavaScript Redirects
-            scripts = soup.find_all('script')
-            js_found = False
-            for script in scripts:
-                if script.string:
-                    # window.location = "..."
-                    match = re.search(r'window\.location(?:\.href)?\s*=\s*["\']([^"\']+)["\']', script.string)
-                    if not match:
-                        # location.replace("...")
-                        match = re.search(r'location\.replace\s*\(\s*["\']([^"\']+)["\']\s*\)', script.string)
-                    
-                    if match:
-                        next_url = match.group(1)
-                        current_url = urljoin(current_url, next_url)
-                        js_found = True
-                        break
-            if js_found:
-                time.sleep(1)
-                continue
-
-            # 3. Check for Forms (e.g. "landing" form)
-            form = soup.find('form', id=re.compile(r'landing|submission')) or soup.find('form')
-            if form:
-                action = form.get('action')
-                if action:
-                    next_url = urljoin(current_url, action)
-                    data = {}
-                    for input_tag in form.find_all('input'):
-                        name = input_tag.get('name')
-                        value = input_tag.get('value', '')
-                        if name:
-                            data[name] = value
-                    
-                    # Submit Form
-                    print(f"Submitting form to {next_url}")
-                    resp = session.post(next_url, data=data, allow_redirects=True, timeout=15)
-                    current_url = resp.url
-                    time.sleep(1)
-                    continue
-
-            # 4. Check for "Get Link" button (href)
-            link_btn = soup.find('a', id='getlink') or soup.find('a', class_='get-link')
-            if link_btn and link_btn.get('href'):
-                current_url = urljoin(current_url, link_btn['href'])
-                continue
-            
-            # If no action found, maybe we are stuck
-            break
-
-        except Exception as e:
-            logging.error(f"VPLink Error: {e}")
-            break
-            
-    return current_url # Return whatever we ended up at
 
 # --- SCRAPERS ---
 
