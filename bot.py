@@ -619,8 +619,15 @@ async def perform_scrape_and_reply(url, update, context):
         result_text = await loop.run_in_executor(None, get_download_links, url)
 
         if len(result_text) > 4096:
-            for x in range(0, len(result_text), 4096):
-                await context.bot.send_message(chat_id=chat_id, text=result_text[x:x+4096], parse_mode='HTML', disable_web_page_preview=True)
+            lines = result_text.split('\n')
+            chunk = ""
+            for line in lines:
+                if len(chunk) + len(line) + 1 > 4096:
+                    await context.bot.send_message(chat_id=chat_id, text=chunk, parse_mode='HTML', disable_web_page_preview=True)
+                    chunk = ""
+                chunk += line + "\n"
+            if chunk:
+                await context.bot.send_message(chat_id=chat_id, text=chunk, parse_mode='HTML', disable_web_page_preview=True)
         else:
             await context.bot.send_message(chat_id=chat_id, text=result_text, parse_mode='HTML', disable_web_page_preview=True)
             
