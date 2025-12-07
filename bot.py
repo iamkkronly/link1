@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from vplink_bypass import bypass_vplink
+from pixel_hubcdn_scraper import scrape_pixel_hubcdn
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -771,6 +772,15 @@ def get_download_links(url):
                 msg += f"📂 {html.escape(r['text'])}: {r['link']}\n"
             return msg
         return f"❌ Failed to extract GoFile (or manual visit required): {url}"
+
+    if "pixel.hubcdn.fans" in url:
+        links = scrape_pixel_hubcdn(url)
+        if links:
+            msg = f"✅ <b>PixelHubCDN Scraped!</b>\n\n"
+            for r in links:
+                msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
+            return msg
+        return "❌ Failed to scrape PixelHubCDN."
 
     if is_hubcdn_url(url):
         link = bypass_hubcdn_link(url)
