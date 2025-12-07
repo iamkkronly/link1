@@ -1014,6 +1014,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         keyboard = []
+        user_id = update.effective_user.id
+        message_id = update.message.message_id
+
         for hit in hits:
             title = hit['document']['post_title']
             permalink = hit['document']['permalink']
@@ -1023,7 +1026,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             search_id = str(uuid.uuid4())[:8]
             SEARCH_CACHE[search_id] = full_url
             
-            keyboard.append([InlineKeyboardButton(title, callback_data=search_id)])
+            callback_data = f"{search_id}|{user_id}|{message_id}"
+            keyboard.append([InlineKeyboardButton(title, callback_data=callback_data)])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(f"Found {len(hits)} results for '{html.escape(user_text)}':", reply_markup=reply_markup, parse_mode='HTML')
@@ -1033,9 +1037,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+
+    data_parts = query.data.split('|')
+
+    if len(data_parts) == 3:
+        search_id, owner_id, owner_message_id = data_parts
+        if int(owner_id) != query.from_user.id:
+            await query.answer(text="This is not your movie request...", show_alert=True)
+            return
+    else:
+        search_id = query.data
+
     await query.answer()
     
-    search_id = query.data
     url = SEARCH_CACHE.get(search_id)
     
     if not url:
