@@ -17,6 +17,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from vplink_bypass import bypass_vplink
 from pixel_hubcdn_scraper import scrape_pixel_hubcdn
+from animeflix_scraper import get_animeflix_links
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -71,6 +72,9 @@ def is_katmoviehd_url(url):
 
 def is_mymp4movies_url(url):
     return "mymp4movies" in url
+
+def is_animeflix_url(url):
+    return "animeflix" in url
 
 def get_soup(content):
     """Helper to parse HTML with fallback."""
@@ -807,6 +811,8 @@ def get_download_links(url):
     links = []
     if "hblinks.dad" in url:
         links = scrape_hblinks(url)
+    elif is_animeflix_url(url):
+        links = get_animeflix_links(url)
     elif is_skymovieshd_url(url):
         links = scrape_skymovieshd(url)
     elif is_4khdhub_url(url):
