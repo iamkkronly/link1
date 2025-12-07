@@ -18,6 +18,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 from vplink_bypass import bypass_vplink
 from pixel_hubcdn_scraper import scrape_pixel_hubcdn
 from animeflix_scraper import get_animeflix_links
+from extralink_scraper import scrape_extralink, is_extralink_url
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -806,6 +807,15 @@ def get_download_links(url):
     if is_vplink_url(url):
         result = bypass_vplink(url)
         return f"✅ <b>VPLink Processed!</b>\n\n🔗 <a href='{result}'>Result Link</a>"
+
+    if is_extralink_url(url):
+        links = scrape_extralink(url)
+        if links:
+            msg = f"✅ <b>ExtraLink Scraped!</b>\n\n"
+            for r in links:
+                msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
+            return msg
+        return "❌ Failed to scrape ExtraLink."
 
     # Scraping
     links = []
