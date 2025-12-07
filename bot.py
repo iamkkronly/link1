@@ -18,6 +18,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 from vplink_bypass import bypass_vplink
 from pixel_hubcdn_scraper import scrape_pixel_hubcdn
 from animeflix_scraper import get_animeflix_links
+from filepress_scraper import scrape_filepress
 from extralink_scraper import scrape_extralink, is_extralink_url
 
 # --- CONFIGURATION ---
@@ -786,6 +787,15 @@ def get_download_links(url):
                 msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
             return msg
         return "❌ Failed to scrape PixelHubCDN."
+
+    if "filepress.cloud" in url:
+        links = scrape_filepress(url)
+        if links:
+            msg = f"✅ <b>FilePress Scraped!</b>\n\n"
+            for r in links:
+                msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
+            return msg
+        return "❌ Failed to scrape FilePress."
 
     if is_hubcdn_url(url):
         link = bypass_hubcdn_link(url)
