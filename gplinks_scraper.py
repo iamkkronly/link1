@@ -1,181 +1,158 @@
-import cloudscraper
-import requests
-from bs4 import BeautifulSoup
-import base64
-import time
 import re
-import random
-from urllib.parse import urlparse, parse_qs, unquote, urljoin
+import time
+from playwright.sync_api import sync_playwright
 
 class GPLinksScraper:
     def __init__(self):
-        self.scraper = cloudscraper.create_scraper(browser={'browser': 'chrome','platform': 'windows','mobile': False})
-        self.scraper.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://gplinks.co/',
-        })
-
-    def decode_base64(self, s):
-        try:
-            return base64.b64decode(s + '=' * (-len(s) % 4)).decode('utf-8')
-        except:
-            return None
+        pass
 
     def scrape(self, url):
         print(f"Scraping: {url}")
 
-        attempt = 0
-        max_attempts = 10
+        # Max attempts for the whole scraping process
+        max_attempts = 5
 
-        while attempt < max_attempts:
-            attempt += 1
-            print(f"\n--- Attempt {attempt} ---")
+        for attempt in range(1, max_attempts + 1):
+            print(f"\n--- Attempt {attempt}/{max_attempts} ---")
 
-            try:
-                self.scraper.cookies.clear()
-
-                resp = self.scraper.get(url, allow_redirects=True)
-                landing_url = resp.url
-
-                if "get2.in" in landing_url:
-                    query = urlparse(landing_url).query
-                    if query:
-                        landing_url = unquote(query)
-                        resp = self.scraper.get(landing_url, allow_redirects=True)
-                        landing_url = resp.url
-
-                print(f"Landing URL: {landing_url}")
-
-                parsed = urlparse(landing_url)
-                qs = parse_qs(parsed.query)
-
-                lid = qs.get('lid', [None])[0]
-                pid = qs.get('pid', [None])[0]
-                vid = qs.get('vid', [None])[0]
-                pages_b64 = qs.get('pages', [None])[0]
-
-                if not (lid and pid and vid):
-                    print("Could not extract parameters from URL.")
-                    return None
-
-                decoded_lid = self.decode_base64(lid)
-                decoded_pid = self.decode_base64(pid)
-                decoded_pages = self.decode_base64(pages_b64)
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    viewport={'width': 1280, 'height': 800}
+                )
+                context.set_default_timeout(90000)
+                page = context.new_page()
 
                 try:
-                    pages_num = int(decoded_pages)
-                except:
-                    pages_num = 3
+                    # 1. Initial Navigation
+                    print(f"Navigating to {url}")
+                    page.goto(url)
+                    page.wait_for_load_state('domcontentloaded')
+                    print(f"Landed on: {page.url}")
 
-                print(f"LID: {decoded_lid}, PID: {decoded_pid}, VID: {vid}, Pages: {pages_num}")
+                    # Check for error immediately
+                    if "gplinks" in page.url and "error" in page.url:
+                        if "not_enough_time" in page.url:
+                            print("Error: Not Enough Time. Waiting 20s...")
+                            time.sleep(20)
+                        else:
+                            print(f"Error page detected: {page.url}")
 
-                domain = parsed.netloc
-                final_target = f"https://gplinks.co/{decoded_lid}/?pid={decoded_pid}&vid={vid}"
+                    # Loop through steps
+                    max_steps = 7
+                    for step in range(1, max_steps + 1):
+                        print(f"--- Step {step} ---")
 
-                if not self.scraper.cookies.get('lid'):
-                    self.scraper.cookies.set('lid', decoded_lid, domain=domain)
-                if not self.scraper.cookies.get('pid'):
-                    self.scraper.cookies.set('pid', decoded_pid, domain=domain)
-                if not self.scraper.cookies.get('vid'):
-                    self.scraper.cookies.set('vid', vid, domain=domain)
-                if not self.scraper.cookies.get('pages'):
-                    self.scraper.cookies.set('pages', str(pages_num), domain=domain)
+                        if "gplinks.co" in page.url and "pid=" in page.url:
+                             print("Reached final gplinks page.")
+                             break
 
-                self.scraper.cookies.set('step_count', '0', domain=domain)
+                        # Wait for timer (15s + buffer)
+                        print("Waiting for 16s (timer)...")
+                        time.sleep(16)
 
-                current_url = landing_url
-                time.sleep(2)
+                        # Check VerifyBtn
+                        verify_exists = page.evaluate("!!document.getElementById('VerifyBtn')")
+                        if verify_exists:
+                            print("Verify button exists. Force showing and clicking...")
+                            page.evaluate("document.getElementById('VerifyBtn').style.display = 'block';")
+                            page.evaluate("document.getElementById('VerifyBtn').style.visibility = 'visible';")
+                            page.evaluate("document.getElementById('VerifyBtn').click()")
+                            time.sleep(3)
+                        else:
+                            print("Verify button not found.")
 
-                for step in range(pages_num + 1):
-                    self.scraper.cookies.set('step_count', str(step), domain=domain)
-                    print(f"Processing Step {step}/{pages_num}")
+                        # Check NextBtn
+                        next_exists = page.evaluate("!!document.getElementById('NextBtn')")
+                        if next_exists:
+                            print("Next button exists. Force showing and clicking...")
+                            page.evaluate("document.getElementById('GoNewxtDiv').style.display = 'block';")
+                            page.evaluate("document.getElementById('NextBtn').style.display = 'block';")
+                            page.evaluate("document.getElementById('NextBtn').style.visibility = 'visible';")
 
-                    post_url = landing_url
-
-                    if step >= pages_num:
-                        next_target = final_target
-                    else:
-                        next_target = landing_url
-
-                    # Increasing wait time slightly more aggressively
-                    sleep_time = 18 + (attempt * 3)
-                    print(f"  Waiting {sleep_time}s...")
-                    time.sleep(sleep_time)
-
-                    data = {
-                        'visitor_id': vid,
-                        'next_target': next_target,
-                        'ad_impressions': str(step * 5),
-                        'step_id': '',
-                        'form_name': 'ads-track-data'
-                    }
-
-                    headers = {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Referer': landing_url,
-                        'Origin': f"{parsed.scheme}://{parsed.netloc}",
-                        'User-Agent': self.scraper.headers['User-Agent'],
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-
-                    print(f"  Posting to {post_url}")
-                    resp = self.scraper.post(post_url, data=data, headers=headers, allow_redirects=True)
-                    current_url = resp.url
-
-                    if "gplinks.co" in current_url or "gplinks.com" in current_url:
-                        if "error" in current_url:
-                             print(f"  Got error: {current_url}")
-                             if "not_enough_time" in current_url:
-                                 break
-                             return current_url
-
-                        soup2 = BeautifulSoup(resp.content, 'lxml')
-                        meta = soup2.find("meta", attrs={"http-equiv": re.compile("refresh", re.I)})
-                        if meta:
-                            content = meta.get("content", "")
-                            if "url=" in content.lower():
-                                 current_url = content.split("url=")[-1].strip()
-                                 print(f"  Final Meta Refresh to: {current_url}")
-                                 resp = self.scraper.get(current_url, allow_redirects=True)
-                                 current_url = resp.url
-
-                        if "gplinks.co" in current_url:
-                            print("  Reached gplinks.co final page. Looking for link...")
-                            # Short sleep for page load
-                            time.sleep(5)
-
-                            soup3 = BeautifulSoup(resp.content, 'lxml')
-                            links = soup3.find_all('a', href=True)
-                            final_link = None
-                            for a in links:
-                                txt = a.get_text().strip().lower()
-                                if any(x in txt for x in ["get link", "open link", "go to link", "submit"]):
-                                    final_link = a['href']
-                                    print(f"  Found final link anchor: {final_link}")
+                            # Wait for navigation
+                            try:
+                                current_url = page.url
+                                with page.expect_navigation(timeout=60000):
+                                    page.evaluate("document.getElementById('NextBtn').click()")
+                                print(f"Navigated to: {page.url}")
+                                page.wait_for_load_state('domcontentloaded')
+                            except:
+                                print("Navigation timeout/failed on NextBtn.")
+                                if page.url != current_url:
+                                    print(f"URL changed to: {page.url}")
+                                else:
+                                    # Stuck?
                                     break
+                        else:
+                            print("Next button not found.")
+                            # Check if we are on final page
+                            if "gplinks" in page.url:
+                                break
 
-                            if not final_link:
-                                for a in links:
-                                    href = a['href']
-                                    if "gplinks.co" not in href and "facebook" not in href and "javascript" not in href and "#" not in href:
-                                         final_link = href
-                                         print(f"  Found candidate link: {final_link}")
-                                         break
+                    # Final Page
+                    if "gplinks" in page.url:
+                        print("Processing final page...")
+                        time.sleep(5)
 
-                            if final_link:
-                                print(f"  Visiting final link: {final_link}")
-                                time.sleep(3)
-                                resp = self.scraper.get(final_link, allow_redirects=True)
-                                print(f"  Final Destination Reached: {resp.url}")
-                                return resp.url
+                        # Submit form #go-link
+                        try:
+                            print("Submitting form #go-link...")
+                            page.evaluate("document.getElementById('go-link').classList.remove('hidden');")
 
-                            print("  Could not find final link on the page.")
-                            return current_url
+                            try:
+                                with page.expect_navigation(timeout=60000):
+                                     page.evaluate("document.getElementById('go-link').submit()")
 
-                        return current_url
+                                print(f"Navigated to: {page.url}")
 
-            except Exception as e:
-                print(f"Error scraping gplinks: {e}")
+                                # Check if success
+                                if "gplinks" not in page.url and "error" not in page.url:
+                                    return page.url
+
+                            except Exception as e:
+                                print(f"Form submission navigation failed: {e}")
+
+                        except Exception as e:
+                            print(f"Form submission error: {e}")
+
+                    # Fallback Extraction
+                    print("Attempting fallback link extraction...")
+                    content = page.content()
+
+                    # Find all http links
+                    candidates = re.findall(r'href=["\'](http[^"\']+)["\']', content)
+
+                    # Filter candidates
+                    valid_candidates = []
+                    for link in candidates:
+                        # Exclude common junk
+                        if any(x in link for x in ["gplinks", "google", "facebook", "twitter", "whatsapp", "telegram", "blogger", "javascript", "#", "wp-includes", "wp-content", "w.org"]):
+                            continue
+                        # Exclude spam keywords
+                        if any(x in link for x in ["porno", "sex", "ads", "click", "play", "game", "bet", "casino"]):
+                            continue
+
+                        valid_candidates.append(link)
+
+                    if valid_candidates:
+                        # Prefer longest link? or first?
+                        # Usually the file hosting link is unique.
+                        print(f"Found candidate links: {valid_candidates}")
+                        return valid_candidates[0]
+
+                    print("No valid link found.")
+
+                except Exception as e:
+                    print(f"Attempt failed: {e}")
+
+                finally:
+                    browser.close()
+
+            # Wait before retry
+            print("Retrying in 5 seconds...")
+            time.sleep(5)
 
         return None
 
