@@ -36,86 +36,105 @@ def scrape_cinevood(url):
 
         links = []
 
-        # Generic scraping logic based on common patterns
-        # Look for <a> tags with quality info or "Download" text
+        # Strategy 1: Look for <h6> headers followed by <p> containing links
+        # This structure was observed in the provided example
+        content_div = soup.find('div', class_='post-single-content')
 
-        for a in soup.find_all('a', href=True):
-            text = a.get_text().strip()
-            href = a['href']
+        if content_div:
+            # Find all h6 and p tags in order
+            elements = content_div.find_all(['h6', 'p'])
+            current_quality = "Unknown Quality"
 
-            # Skip empty or internal anchors
-            if not href or href.startswith('#'):
-                continue
+            for elem in elements:
+                if elem.name == 'h6':
+                    # Clean up quality text
+                    text = elem.get_text().strip()
+                    if text:
+                        current_quality = text
+                elif elem.name == 'p':
+                    # Look for links in this paragraph
+                    # We are looking for download links which often have specific classes or text
+                    # In the example, they have classes like 'maxbutton-hubcloud', 'maxbutton-oxxfile'
 
-            text_lower = text.lower()
+                    found_links = elem.find_all('a', href=True)
+                    for link in found_links:
+                        href = link['href']
+                        text = link.get_text().strip()
 
-            # Keywords indicating a download link
-            quality_keywords = ['480p', '720p', '1080p', '2160p', '4k']
-            download_keywords = ['download', 'links', 'gdrive', 'mega', 'file']
+                        # Filter out common social share links or navigation links
+                        # Often download links are external or have specific domains
+                        # Domains seen: hubcloud.foo, new7.oxxfile.info
 
-            is_download = False
+                        # Heuristic: Download links usually don't point to facebook, twitter, telegram share, etc.
+                        if any(x in href for x in ['facebook.com', 'twitter.com', 'whatsapp://', 'telegram.me/share']):
+                            continue
 
-            # Check for quality info
-            if any(q in text_lower for q in quality_keywords):
-                is_download = True
-            # Check for explicit download text
-            elif any(k in text_lower for k in download_keywords):
-                # Filter out navigation links if possible (heuristic)
-                if len(text) < 50:
-                    is_download = True
+                        # If the text is empty, try to get it from title attribute
+                        if not text:
+                            text = link.get('title', '').strip()
 
-            if is_download:
-                links.append({'text': text, 'link': href})
+                        # If still empty or just "Download", use the href domain or something generic
+                        if not text:
+                            text = "Download Link"
 
-        # If we found links, categorize them
-        categorized_links = {
-            '480p': [],
-            '720p': [],
-            '1080p': [],
-            'Other': []
-        }
+                        # Specific check for known download buttons
+                        is_download_button = False
+                        classes = link.get('class', [])
+                        if any('maxbutton' in c for c in classes):
+                            is_download_button = True
 
-        for item in links:
-            q_found = False
-            for q in ['480p', '720p', '1080p']:
-                if q in item['text'].lower():
-                    categorized_links[q].append(item)
-                    q_found = True
+                        # If it looks like a download link
+                        if is_download_button or 'drive' in href or 'file' in href or 'cloud' in href:
+                             links.append({
+                                 'quality': current_quality,
+                                 'text': text,
+                                 'link': href
+                             })
 
-            if not q_found:
-                categorized_links['Other'].append(item)
+        # Strategy 2: Fallback if Strategy 1 found nothing (different template?)
+        if not links:
+            logger.info("Strategy 1 found no links. Trying generic fallback.")
+            # ... existing generic logic could go here or a variation ...
+            # For now, let's just do a broad search for maxbuttons if above failed
+            for a in soup.find_all('a', class_='maxbutton', href=True):
+                 text = a.get_text().strip() or a.get('title', '').strip() or "Download"
+                 href = a['href']
+                 links.append({
+                     'quality': "Unknown (Fallback)",
+                     'text': text,
+                     'link': href
+                 })
 
-        return categorized_links
+        return links
 
     except Exception as e:
         logger.error(f"Error scraping {url}: {e}")
-        return {}
+        return []
 
 if __name__ == "__main__":
-    print("Cinevood Scraper")
     if len(sys.argv) > 1:
         url = sys.argv[1]
     else:
-        url = input("Enter Cinevood Movie URL: ")
+        print("Please provide a Cinevood URL as an argument.")
+        print("Usage: python3 cinevood_scraper.py <url>")
+        sys.exit(1)
 
     results = scrape_cinevood(url)
 
     if results:
-        found_any = False
-        for quality in ['480p', '720p', '1080p']:
-            if results[quality]:
-                found_any = True
-                print(f"\n--- {quality} Links ---")
-                for res in results[quality]:
-                    print(f"[{res['text']}] -> {res['link']}")
+        print(f"\nFound {len(results)} links:\n")
+        # Group by quality for better display
+        grouped = {}
+        for item in results:
+            q = item['quality']
+            if q not in grouped:
+                grouped[q] = []
+            grouped[q].append(item)
 
-        if results['Other']:
-            found_any = True
-            print("\n--- Other Links ---")
-            for res in results['Other']:
-                print(f"[{res['text']}] -> {res['link']}")
-
-        if not found_any:
-             print("\nNo specific quality links found.")
+        for q, items in grouped.items():
+            print(f"--- {q} ---")
+            for item in items:
+                print(f"[{item['text']}] -> {item['link']}")
+            print("")
     else:
-        print("\nNo links found or error occurred.")
+        print("\nNo links found.")
