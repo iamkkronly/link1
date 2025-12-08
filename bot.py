@@ -1300,7 +1300,7 @@ def scrape_cinevood(url):
                 elif elem.name == 'p':
                     found_links = elem.find_all('a', href=True)
                     for link in found_links:
-                        href = link['href']
+                        href = urljoin(url, link['href'])
                         text = link.get_text().strip()
                         if any(x in href for x in ['facebook.com', 'twitter.com', 'whatsapp://', 'telegram.me/share']): continue
                         if not text: text = link.get('title', '').strip() or "Download Link"
