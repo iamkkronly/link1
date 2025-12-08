@@ -3,3 +3,6 @@ requests
 beautifulsoup4 
 lxml
 cloudscraper
+playwright-stealth
+playwright
+setuptools

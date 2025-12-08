@@ -25,7 +25,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 # NOTE: Ensure you have run 'pip install playwright' and 'playwright install chromium'
 try:
     from playwright.sync_api import sync_playwright
-    from playwright_stealth.stealth import Stealth
+    from playwright_stealth import stealth_sync
 except ImportError:
     logging.warning("Playwright or playwright-stealth not installed. Some scrapers will fail.")
 
@@ -1365,7 +1365,6 @@ def scrape_filepress(url):
 
     try:
         with sync_playwright() as p:
-            stealth = Stealth()
             browser = p.chromium.launch(
                 headless=True,
                 args=[
@@ -1377,8 +1376,8 @@ def scrape_filepress(url):
             context = browser.new_context(
                  user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
             )
-            stealth.apply_stealth_sync(context)
             page = context.new_page()
+            stealth_sync(page)
 
             try:
                 page.goto(url, timeout=60000)
@@ -1442,6 +1441,10 @@ def scrape_filepress(url):
                         if any(h in href_lower for h in ["drive.google.com", "mega.nz", "gofile.io", "1fichier.com", "pixeldrain.com", "mediafire.com"]):
                             is_valid = True
 
+                        # Handle relative URLs
+                        if not href.startswith(('http', 'https', '//')):
+                            href = urljoin(url, href)
+
                         if is_valid and not any(r['link'] == href for r in results):
                             results.append({"text": text or "Download Link", "link": href})
                     except Exception:
@@ -1453,9 +1456,14 @@ def scrape_filepress(url):
                          try:
                              href = el.get_attribute("href")
                              text = el.inner_text().strip()
-                             if href and href.startswith("http") and url not in href:
-                                 if not any(r['link'] == href for r in results):
-                                     results.append({"text": text or "Link", "link": href})
+
+                             if href:
+                                 if not href.startswith(('http', 'https', '//')):
+                                     href = urljoin(url, href)
+
+                                 if href.startswith("http") and url not in href:
+                                     if not any(r['link'] == href for r in results):
+                                         results.append({"text": text or "Link", "link": href})
                          except:
                              pass
 

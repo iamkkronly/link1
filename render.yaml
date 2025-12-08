@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: scraper-bot
+    env: python
+    plan: free
+    repo: https://github.com/your-username/your-repo-name
+    branch: main
+    buildCommand: ./render_build.sh
+    startCommand: python bot.py
+    envVars:
+      - key: TOKEN
+        sync: false
+    autoDeploy: true
