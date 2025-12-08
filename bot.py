@@ -20,6 +20,7 @@ from pixel_hubcdn_scraper import scrape_pixel_hubcdn
 from animeflix_scraper import get_animeflix_links
 from filepress_scraper import scrape_filepress
 from extralink_scraper import scrape_extralink, is_extralink_url
+from toonworld4all_scraper import scrape_toonworld4all
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -74,6 +75,9 @@ def is_katmoviehd_url(url):
 
 def is_mymp4movies_url(url):
     return "mymp4movies" in url
+
+def is_toonworld4all_url(url):
+    return "toonworld4all" in url
 
 def is_animeflix_url(url):
     return "animeflix" in url
@@ -845,6 +849,8 @@ def get_download_links(url):
         links = scrape_katmoviehd(url)
     elif is_mymp4movies_url(url):
         links = scrape_mymp4movies(url)
+    elif is_toonworld4all_url(url):
+        links = scrape_toonworld4all(url)
     else:
         links = scrape_hdhub4u_page(url)
 
