@@ -21,6 +21,7 @@ from animeflix_scraper import get_animeflix_links
 from filepress_scraper import scrape_filepress
 from extralink_scraper import scrape_extralink, is_extralink_url
 from toonworld4all_scraper import scrape_toonworld4all
+from oxxfile_scraper import scrape_oxxfile
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -81,6 +82,9 @@ def is_toonworld4all_url(url):
 
 def is_animeflix_url(url):
     return "animeflix" in url
+
+def is_oxxfile_url(url):
+    return "oxxfile.info" in url
 
 def get_soup(content):
     """Helper to parse HTML with fallback."""
@@ -830,6 +834,15 @@ def get_download_links(url):
                 msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
             return msg
         return "❌ Failed to scrape ExtraLink."
+
+    if is_oxxfile_url(url):
+        links = scrape_oxxfile(url)
+        if links:
+            msg = f"✅ <b>OxxFile Scraped!</b>\n\n"
+            for r in links:
+                msg += f"📦 {html.escape(r['text'])}: {r['link']}\n"
+            return msg
+        return "❌ Failed to scrape OxxFile."
 
     # Scraping
     links = []
