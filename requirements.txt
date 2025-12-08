@@ -5,3 +5,4 @@ lxml
 cloudscraper
 playwright-stealth
 playwright
+setuptools

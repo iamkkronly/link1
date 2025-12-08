@@ -2,6 +2,7 @@ import logging
 import time
 import sys
 import re
+from urllib.parse import urljoin
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from playwright.sync_api import sync_playwright
-    from playwright_stealth.stealth import Stealth
+    from playwright_stealth import stealth_sync
 except ImportError:
     logger.error("Playwright or playwright-stealth not installed. Please install them.")
     sys.exit(1)
@@ -23,7 +24,6 @@ def scrape_filepress(url):
     results = []
 
     with sync_playwright() as p:
-        stealth = Stealth()
         # Launch browser with stealth args
         browser = p.chromium.launch(
             headless=True,
@@ -36,13 +36,14 @@ def scrape_filepress(url):
 
         # Create context with realistic user agent
         context = browser.new_context(
-             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+             viewport={"width": 1920, "height": 1080},
+             device_scale_factor=1,
+             locale="en-US"
         )
 
-        # Apply stealth to the context
-        stealth.apply_stealth_sync(context)
-
         page = context.new_page()
+        stealth_sync(page)
 
         try:
             # Navigate to URL
@@ -54,8 +55,8 @@ def scrape_filepress(url):
                 logger.info("Cloudflare challenge detected. Attempting to solve...")
 
                 start_time = time.time()
-                # Try for up to 40 seconds to pass the challenge
-                while time.time() - start_time < 40:
+                # Try for up to 60 seconds to pass the challenge
+                while time.time() - start_time < 60:
                     # Check all frames for Turnstile widget
                     frames = page.frames
                     clicked_something = False
@@ -64,19 +65,34 @@ def scrape_filepress(url):
                         if "challenges.cloudflare.com" in frame.url:
                              try:
                                  # 1. Try clicking the checkbox directly
+                                 # We target the input specifically, or the label
                                  checkbox = frame.locator("input[type='checkbox']")
                                  if checkbox.count() > 0:
-                                     logger.info("Found Turnstile checkbox, clicking...")
+                                     logger.info("Found Turnstile checkbox input, clicking parent...")
                                      checkbox.locator("..").click(force=True)
                                      clicked_something = True
                                      break
 
-                                 # 2. Fallback: Click the body of the challenge frame
-                                 # This often triggers the verification if it's just 'verify'
-                                 logger.info("Clicking Turnstile frame body...")
-                                 frame.click("body", force=True)
-                                 clicked_something = True
-                             except Exception:
+                                 # 2. Try clicking the specific cloudflare wrapper if identifiable
+                                 # .ctp-checkbox-label is common
+                                 label = frame.locator(".ctp-checkbox-label")
+                                 if label.count() > 0:
+                                     logger.info("Found Turnstile label, clicking...")
+                                     label.click(force=True)
+                                     clicked_something = True
+                                     break
+
+                                 # 3. Fallback: Click center of the frame
+                                 box = frame.locator("body").bounding_box()
+                                 if box:
+                                     logger.info("Clicking center of Turnstile frame...")
+                                     x = box['width'] / 2
+                                     y = box['height'] / 2
+                                     frame.mouse.click(x, y)
+                                     clicked_something = True
+                                     break
+
+                             except Exception as e:
                                  pass
 
                     if clicked_something:
@@ -97,10 +113,16 @@ def scrape_filepress(url):
             except:
                 pass
 
+            # Handle potential redirects (e.g., meta refresh or js redirect after captcha)
+            if "Just a moment..." not in page.title():
+                 page.wait_for_timeout(2000)
+
             logger.info(f"Final Page Title: {page.title()}")
 
             if "Just a moment..." in page.title():
                  logger.error("Failed to bypass Cloudflare.")
+                 # Take screenshot for debugging (optional/commented out)
+                 # page.screenshot(path="failed_cf.png")
                  return []
 
             # --- Link Extraction ---
@@ -130,6 +152,10 @@ def scrape_filepress(url):
                     if any(h in href_lower for h in host_keywords):
                         is_valid = True
 
+                        # Handle relative URLs
+                        if not href.startswith(('http', 'https', '//')):
+                            href = urljoin(url, href)
+
                     if is_valid:
                         # Avoid duplicates
                         if not any(r['link'] == href for r in results):
@@ -145,9 +171,14 @@ def scrape_filepress(url):
                      try:
                          href = el.get_attribute("href")
                          text = el.inner_text().strip()
-                         if href and href.startswith("http") and url not in href:
-                             if not any(r['link'] == href for r in results):
-                                 results.append({"text": text or "Link", "link": href})
+
+                         if href:
+                             if not href.startswith(('http', 'https', '//')):
+                                 href = urljoin(url, href)
+
+                             if href.startswith("http") and url not in href:
+                                 if not any(r['link'] == href for r in results):
+                                     results.append({"text": text or "Link", "link": href})
                      except:
                          pass
 
