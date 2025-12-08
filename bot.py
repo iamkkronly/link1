@@ -84,6 +84,7 @@ def is_extralink_url(url): return "extralink.ink" in url
 def is_filepress_url(url): return "filepress" in url
 def is_hdwebmovies_url(url): return "hdwebmovies" in url
 def is_oxxfile_url(url): return "oxxfile" in url
+def is_watchadsontape_url(url): return "watchadsontape.com" in url
 
 def get_soup(content):
     """Helper to parse HTML with fallback."""
@@ -1522,6 +1523,43 @@ def scrape_oxxfile(url):
 
     return links
 
+def scrape_watchadsontape(url):
+    logging.info(f"Scraping WatchAdsOnTape URL: {url}")
+    headers = {
+        "User-Agent": USER_AGENT
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+
+        match = re.search(r"document\.getElementById\('norobotlink'\)\.innerHTML\s*=\s*'//([^']+)'\s*\+\s*\('([^']+)'\)\.substring\((\d+)\)\.substring\((\d+)\)", response.text)
+
+        if match:
+            domain_part = match.group(1)
+            token_string = match.group(2)
+            sub1 = int(match.group(3))
+            sub2 = int(match.group(4))
+
+            final_path = token_string[sub1:][sub2:]
+
+            final_link = f"https://{domain_part}{final_path}"
+            return [{"text": "Download Link", "link": final_link}]
+
+        match = re.search(r"document\.getElementById\('norobotlink'\)\.innerHTML\s*=\s*'//([^']+)'\s*\+\s*\('([^']+)'\)\.substring\((\d+)\);", response.text)
+        if match:
+            domain_part = match.group(1)
+            token_string = match.group(2)
+            sub1 = int(match.group(3))
+
+            final_path = token_string[sub1:]
+            final_link = f"https://{domain_part}{final_path}"
+            return [{"text": "Download Link", "link": final_link}]
+
+        return []
+    except Exception as e:
+        logging.error(f"WatchAdsOnTape Scrape Error: {e}")
+        return []
+
 # --- MAIN CONTROLLER ---
 
 def get_download_links(url):
@@ -1649,6 +1687,8 @@ def get_download_links(url):
         links = scrape_hdwebmovies(url)
     elif is_oxxfile_url(url):
         links = scrape_oxxfile(url)
+    elif is_watchadsontape_url(url):
+        links = scrape_watchadsontape(url)
     else:
         links = scrape_hdhub4u_page(url)
 
