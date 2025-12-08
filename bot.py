@@ -86,6 +86,7 @@ def is_filepress_url(url): return "filepress" in url
 def is_hdwebmovies_url(url): return "hdwebmovies" in url
 def is_oxxfile_url(url): return "oxxfile" in url
 def is_watchadsontape_url(url): return "watchadsontape.com" in url
+def is_vikingfile_url(url): return "vikingfile.com" in url or "vik1ngfile" in url
 
 def get_soup(content):
     """Helper to parse HTML with fallback."""
@@ -1644,6 +1645,61 @@ def scrape_watchadsontape(url):
         logging.error(f"WatchAdsOnTape Scrape Error: {e}")
         return []
 
+def scrape_vikingfile(url):
+    """
+    Scrapes download links from a VikingFile URL using Cloudscraper.
+    """
+    logging.info(f"Scraping VikingFile: {url}")
+
+    # Initialize cloudscraper with browser emulation
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'mobile': False
+        }
+    )
+
+    try:
+        response = scraper.get(url)
+        response.raise_for_status()
+
+        try:
+            soup = BeautifulSoup(response.content, 'lxml')
+        except Exception:
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+        links = []
+
+        # Look for the download link
+        download_link = soup.find('a', id='download-link')
+        if download_link and download_link.get('href') and download_link['href'] != '#':
+             links.append({'text': download_link.get_text(strip=True) or "Download Link", 'link': download_link['href']})
+
+        # Look for other potential download links
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            text = a.get_text(strip=True)
+
+            if not href or href.startswith('#') or href.startswith('javascript'):
+                continue
+
+            # Filter for likely download buttons
+            if "download" in text.lower():
+                 # Avoid the Usenet ad link usually present
+                 if "fast-download" in href and "usenet" in text.lower():
+                     continue
+
+                 # Add the link
+                 if not any(l['link'] == href for l in links):
+                     links.append({'text': text, 'link': href})
+
+        return links
+
+    except Exception as e:
+        logging.error(f"VikingFile Scrape Error: {e}")
+        return []
+
 # --- MAIN CONTROLLER ---
 
 def get_download_links(url):
@@ -1773,6 +1829,8 @@ def get_download_links(url):
         links = scrape_oxxfile(url)
     elif is_watchadsontape_url(url):
         links = scrape_watchadsontape(url)
+    elif is_vikingfile_url(url):
+        links = scrape_vikingfile(url)
     else:
         links = scrape_hdhub4u_page(url)
 
