@@ -65,9 +65,8 @@ def get_download_links(url):
             logger.warning("Could not find post content div.")
             return []
 
-        # Strategy: Iterate through elements to associate headers with links
-        elements = content_div.find_all(['h5', 'h6', 'p'])
-        current_quality = "Unknown Quality"
+        # Strategy: Iterate through header elements (h5, h6) and check their siblings for links
+        headers = content_div.find_all(['h5', 'h6'])
 
         # Helper to check if a link is a valid download link
         def is_valid_link(href):
@@ -80,28 +79,33 @@ def get_download_links(url):
                 return False
             return True
 
-        for elem in elements:
-            if elem.name in ['h5', 'h6']:
-                text = elem.get_text().strip()
-                if text:
-                    current_quality = text
-            elif elem.name == 'p':
-                found_links = elem.find_all('a', href=True)
-                for link in found_links:
-                    href = link['href']
-                    text = link.get_text().strip()
+        for header in headers:
+            current_quality = header.get_text().strip()
+            if not current_quality:
+                continue
 
-                    if not text:
-                        text = link.get('title', '').strip()
-                    if not text:
-                        text = "Download Link"
+            sibling = header.find_next_sibling()
+            # Iterate through siblings until we hit the next header or end of section
+            while sibling and sibling.name not in ['h5', 'h6']:
+                # Links can be in 'p' or 'div' tags
+                if sibling.name in ['p', 'div']:
+                    found_links = sibling.find_all('a', href=True)
+                    for link in found_links:
+                        href = link['href']
+                        text = link.get_text().strip()
 
-                    if is_valid_link(href):
-                        links_data.append({
-                            'quality': current_quality,
-                            'text': text,
-                            'link': href
-                        })
+                        if not text:
+                            text = link.get('title', '').strip()
+                        if not text:
+                            text = "Download Link"
+
+                        if is_valid_link(href):
+                            links_data.append({
+                                'quality': current_quality,
+                                'text': text,
+                                'link': href
+                            })
+                sibling = sibling.find_next_sibling()
 
         return links_data
 
@@ -111,12 +115,63 @@ def get_download_links(url):
 
 def main():
     if len(sys.argv) > 1:
-        movie_name = " ".join(sys.argv[1:])
+        # Check if the argument is a URL or a movie name
+        arg = sys.argv[1]
+        if arg.startswith("http://") or arg.startswith("https://"):
+             # Direct URL scraping
+            url = arg
+            print(f"Scraping URL: {url}")
+            links = get_download_links(url)
+            if links:
+                print("\n--- Download Links ---\n")
+                # Group by quality for display
+                grouped_links = {}
+                for item in links:
+                    q = item['quality']
+                    if q not in grouped_links:
+                        grouped_links[q] = []
+                    grouped_links[q].append(item)
+
+                for q, items in grouped_links.items():
+                    print(f"Quality: {q}")
+                    for item in items:
+                        print(f"  [{item['text']}] -> {item['link']}")
+                    print("")
+            else:
+                print("No download links found on the page.")
+            return
+        else:
+            movie_name = " ".join(sys.argv[1:])
     else:
-        movie_name = input("Enter movie name: ").strip()
+        # Interactive mode
+        user_input = input("Enter movie name or URL: ").strip()
+        if user_input.startswith("http://") or user_input.startswith("https://"):
+            url = user_input
+            print(f"Scraping URL: {url}")
+            links = get_download_links(url)
+            # ... (display logic duplicated, can be refactored) ...
+            if links:
+                print("\n--- Download Links ---\n")
+                grouped_links = {}
+                for item in links:
+                    q = item['quality']
+                    if q not in grouped_links:
+                        grouped_links[q] = []
+                    grouped_links[q].append(item)
+
+                for q, items in grouped_links.items():
+                    print(f"Quality: {q}")
+                    for item in items:
+                        print(f"  [{item['text']}] -> {item['link']}")
+                    print("")
+            else:
+                print("No download links found on the page.")
+            return
+        else:
+            movie_name = user_input
 
     if not movie_name:
-        print("Please provide a movie name.")
+        print("Please provide a movie name or URL.")
         return
 
     print(f"\nSearching for '{movie_name}'...")
