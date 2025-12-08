@@ -25,8 +25,9 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 # NOTE: Ensure you have run 'pip install playwright' and 'playwright install chromium'
 try:
     from playwright.sync_api import sync_playwright
+    from playwright_stealth.stealth import Stealth
 except ImportError:
-    logging.warning("Playwright not installed. OxxFile scraper will fail.")
+    logging.warning("Playwright or playwright-stealth not installed. Some scrapers will fail.")
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -1358,30 +1359,113 @@ def scrape_extralink(url):
         return []
 
 def scrape_filepress(url):
-    scraper = cloudscraper.create_scraper()
+    logging.info(f"Scraping FilePress: {url}")
+    results = []
+
     try:
-        response = scraper.get(url)
-        response.raise_for_status()
-        soup = get_soup(response.content)
-        links = []
-        for a in soup.find_all('a', href=True):
-            text = a.get_text(strip=True)
-            href = a['href']
-            if not href.startswith(('http', 'https')): href = urljoin(url, href)
-            if href == url or href.startswith('javascript'): continue
-            if any(kw in text.lower() for kw in ['download', '480p', '720p', '1080p', 'get link']) or \
-               any(host in href for host in ['drive.google', 'mega.nz', 'gofile.io', 'pixeldrain']):
-                 links.append({'text': text, 'link': href})
-        if not links:
-            for btn in soup.find_all(class_=re.compile(r'btn|button|download', re.I)):
-                if btn.name == 'a' and btn.get('href'):
-                    href = btn['href']
-                    if not href.startswith(('http', 'https')): href = urljoin(url, href)
-                    links.append({'text': btn.get_text(strip=True) or "Download", 'link': href})
-        return links
+        with sync_playwright() as p:
+            stealth = Stealth()
+            browser = p.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                ]
+            )
+            context = browser.new_context(
+                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            )
+            stealth.apply_stealth_sync(context)
+            page = context.new_page()
+
+            try:
+                page.goto(url, timeout=60000)
+                page.wait_for_timeout(5000)
+
+                # Cloudflare / Turnstile Handling
+                if "Just a moment..." in page.title() or "Verifying you are human" in page.content():
+                    logging.info("FilePress: Cloudflare challenge detected. Attempting to solve...")
+                    start_time = time.time()
+                    while time.time() - start_time < 40:
+                        frames = page.frames
+                        clicked = False
+                        for frame in frames:
+                            if "challenges.cloudflare.com" in frame.url:
+                                 try:
+                                     checkbox = frame.locator("input[type='checkbox']")
+                                     if checkbox.count() > 0:
+                                         checkbox.locator("..").click(force=True)
+                                         clicked = True
+                                         break
+                                     frame.click("body", force=True)
+                                     clicked = True
+                                 except Exception:
+                                     pass
+                        if clicked:
+                            page.wait_for_timeout(3000)
+                        else:
+                            page.wait_for_timeout(1000)
+
+                        if "Just a moment..." not in page.title():
+                            logging.info("FilePress: Challenge solved.")
+                            break
+
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except:
+                    pass
+
+                if "Just a moment..." in page.title():
+                     logging.error("FilePress: Failed to bypass Cloudflare.")
+                     browser.close()
+                     return []
+
+                # Link Extraction
+                elements = page.locator("a[href]").all()
+                for el in elements:
+                    try:
+                        text = el.inner_text().strip()
+                        href = el.get_attribute("href")
+
+                        if not href or href.startswith("javascript") or href == "#" or href == "/":
+                            continue
+
+                        text_lower = text.lower()
+                        href_lower = href.lower()
+                        is_valid = False
+
+                        if any(k in text_lower for k in ["download", "480p", "720p", "1080p", "2160p", "4k", "get link"]):
+                            is_valid = True
+
+                        if any(h in href_lower for h in ["drive.google.com", "mega.nz", "gofile.io", "1fichier.com", "pixeldrain.com", "mediafire.com"]):
+                            is_valid = True
+
+                        if is_valid and not any(r['link'] == href for r in results):
+                            results.append({"text": text or "Download Link", "link": href})
+                    except Exception:
+                        pass
+
+                # Fallback: Dump all external http links if no keywords match
+                if not results:
+                     for el in page.locator("a[href]").all():
+                         try:
+                             href = el.get_attribute("href")
+                             text = el.inner_text().strip()
+                             if href and href.startswith("http") and url not in href:
+                                 if not any(r['link'] == href for r in results):
+                                     results.append({"text": text or "Link", "link": href})
+                         except:
+                             pass
+
+            except Exception as e:
+                logging.error(f"FilePress Playwright Error: {e}")
+            finally:
+                browser.close()
     except Exception as e:
-        logging.error(f"FilePress Error: {e}")
-        return []
+        logging.error(f"FilePress Setup Error: {e}")
+
+    return results
 
 def scrape_hdwebmovies(url):
     """Scrapes download links from HDWebMovies."""
