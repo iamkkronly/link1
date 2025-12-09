@@ -25,8 +25,11 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 # --- PLAYWRIGHT IMPORT ---
 try:
     from playwright.sync_api import sync_playwright
+    from mediacm_scraper import MediaCMScraper
+    PLAYWRIGHT_AVAILABLE = True
 except ImportError:
-    logging.warning("Playwright not installed. OxxFile scraper will fail.")
+    logging.warning("Playwright not installed. OxxFile and MediaCM scrapers will fail.")
+    PLAYWRIGHT_AVAILABLE = False
 
 # --- CONFIGURATION ---
 TOKEN = "8213744935:AAGo_g4JSj2mrreYYT6yFHIdyYu67P1ZKB8"
@@ -101,6 +104,7 @@ def is_filepress_url(url): return "filepress" in url
 def is_hdwebmovies_url(url): return "hdwebmovies" in url
 def is_oxxfile_url(url): return "oxxfile" in url
 def is_watchadsontape_url(url): return "watchadsontape" in url or "streamtape" in url
+def is_mediacm_url(url): return "media.cm" in url
 
 def get_soup(content):
     try:
@@ -1659,6 +1663,22 @@ def get_download_links(url):
     
     if is_watchadsontape_url(url):
         return scrape_watchadsontape(url)
+
+    if is_mediacm_url(url):
+        if not PLAYWRIGHT_AVAILABLE:
+            return "❌ Media.cm scraping requires Playwright."
+        try:
+            scraper = MediaCMScraper()
+            results = scraper.scrape(url)
+            if results:
+                msg = f"✅ <b>Media.cm Extracted!</b>\n\n"
+                for r in results:
+                    safe_text = html.escape(r['text'])
+                    msg += f"📦 <a href='{r['link']}'>{safe_text}</a>\n"
+                return msg
+            return "❌ Failed to extract Media.cm links."
+        except Exception as e:
+            return f"❌ Error processing Media.cm: {html.escape(str(e))}"
 
     # Scraping
     links = []
