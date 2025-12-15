@@ -91,20 +91,14 @@ def get_download_links(url):
                 'link': href
             })
 
-        for elem in content_div.children:
-            if not elem.name:
-                continue
-
+        # Iterate over all relevant elements in document order
+        for elem in content_div.find_all(['h5', 'h6', 'a']):
             if elem.name in ['h5', 'h6']:
                 text = elem.get_text().strip()
-                if text: current_quality = text
-
+                if text:
+                     current_quality = text
             elif elem.name == 'a' and elem.has_attr('href'):
                 process_link(elem, current_quality)
-
-            elif elem.name in ['p', 'div']:
-                for link in elem.find_all('a', href=True):
-                    process_link(link, current_quality)
 
         return links_data
 
