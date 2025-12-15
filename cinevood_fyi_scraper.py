@@ -65,47 +65,46 @@ def get_download_links(url):
             logger.warning("Could not find post content div.")
             return []
 
-        # Strategy: Iterate through header elements (h5, h6) and check their siblings for links
-        headers = content_div.find_all(['h5', 'h6'])
+        current_quality = "Unknown Quality"
 
-        # Helper to check if a link is a valid download link
-        def is_valid_link(href):
-            # Exclude internal navigation or social shares
+        # Helper to process a link tag
+        def process_link(link, quality):
+            href = link['href']
+            text = link.get_text().strip()
+            if not text:
+                text = link.get('title', '').strip()
+            if not text:
+                text = "Download Link"
+
+            # Filter
             invalid_patterns = [
                 '/1080p/', '/720p/', '/480p/', '/tg', 'facebook.com',
-                'twitter.com', 'whatsapp://', 'telegram.me/share'
+                'twitter.com', 'whatsapp://', 'telegram.me/share',
+                'pinterest.com', 'wa.me', 'mailto:', '/how-to-download', '/tgfile'
             ]
             if any(p in href for p in invalid_patterns):
-                return False
-            return True
+                return
 
-        for header in headers:
-            current_quality = header.get_text().strip()
-            if not current_quality:
+            links_data.append({
+                'quality': quality,
+                'text': text,
+                'link': href
+            })
+
+        for elem in content_div.children:
+            if not elem.name:
                 continue
 
-            sibling = header.find_next_sibling()
-            # Iterate through siblings until we hit the next header or end of section
-            while sibling and sibling.name not in ['h5', 'h6']:
-                # Links can be in 'p' or 'div' tags
-                if sibling.name in ['p', 'div']:
-                    found_links = sibling.find_all('a', href=True)
-                    for link in found_links:
-                        href = link['href']
-                        text = link.get_text().strip()
+            if elem.name in ['h5', 'h6']:
+                text = elem.get_text().strip()
+                if text: current_quality = text
 
-                        if not text:
-                            text = link.get('title', '').strip()
-                        if not text:
-                            text = "Download Link"
+            elif elem.name == 'a' and elem.has_attr('href'):
+                process_link(elem, current_quality)
 
-                        if is_valid_link(href):
-                            links_data.append({
-                                'quality': current_quality,
-                                'text': text,
-                                'link': href
-                            })
-                sibling = sibling.find_next_sibling()
+            elif elem.name in ['p', 'div']:
+                for link in elem.find_all('a', href=True):
+                    process_link(link, current_quality)
 
         return links_data
 

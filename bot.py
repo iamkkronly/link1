@@ -1132,22 +1132,38 @@ def scrape_cinevood(url):
         
         content_div = soup.find('div', class_='post-single-content')
         if content_div:
-            elements = content_div.find_all(['h5', 'h6', 'p'])
             current_quality = "Unknown Quality"
-            for elem in elements:
+
+            def process_link(link, quality):
+                href = urljoin(url, link['href'])
+                text = link.get_text().strip()
+                if not text: text = link.get('title', '').strip() or "Download Link"
+
+                invalid_patterns = [
+                    'facebook.com', 'twitter.com', 'whatsapp://', 'telegram.me/share',
+                    'pinterest.com', 'wa.me', 'mailto:', '/tg', '/how-to-download', '/tgfile'
+                ]
+                if any(x in href for x in invalid_patterns):
+                    return
+
+                display_text = f"[{quality}] {text}"
+                links.append({'text': display_text, 'link': href})
+
+            for elem in content_div.children:
+                if not elem.name:
+                    continue
+
                 if elem.name in ['h5', 'h6']:
                     text = elem.get_text().strip()
                     if text: current_quality = text
-                elif elem.name == 'p':
-                    found_links = elem.find_all('a', href=True)
-                    for link in found_links:
-                        href = urljoin(url, link['href'])
-                        text = link.get_text().strip()
-                        if any(x in href for x in ['facebook.com', 'twitter.com', 'whatsapp://', 'telegram.me/share']): continue
-                        if not text: text = link.get('title', '').strip() or "Download Link"
-                        
-                        display_text = f"[{current_quality}] {text}"
-                        links.append({'text': display_text, 'link': href})
+
+                elif elem.name == 'a' and elem.has_attr('href'):
+                    process_link(elem, current_quality)
+
+                elif elem.name in ['p', 'div']:
+                    for link in elem.find_all('a', href=True):
+                        process_link(link, current_quality)
+
         return links
     except Exception as e:
         logging.error(f"Error scraping Cinevood: {e}")
