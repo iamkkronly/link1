@@ -1134,25 +1134,6 @@ def scrape_cinevood(url):
         if content_div:
             current_quality = "Unknown Quality"
 
-            def process_link(link, quality):
-                href = urljoin(url, link['href'])
-                text = link.get_text().strip()
-                if not text: text = link.get('title', '').strip() or "Download Link"
-
-                invalid_patterns = [
-                    'facebook.com', 'twitter.com', 'whatsapp://', 'telegram.me/share',
-                    'pinterest.com', 'wa.me', 'mailto:', '/tg', '/how-to-download', '/tgfile'
-                ]
-                if any(x in href for x in invalid_patterns):
-                    return
-
-                # Additional filter for nav links
-                if text in ["Prev Article", "Next Article"]:
-                    return
-
-                display_text = f"[{quality}] {text}"
-                links.append({'text': display_text, 'link': href})
-
             # Iterate through all relevant elements in document order
             # (h5/h6 are headers, 'a' are links)
             # content_div.find_all(...) returns them in document order,
@@ -1163,7 +1144,16 @@ def scrape_cinevood(url):
                     if text: current_quality = text
 
                 elif elem.name == 'a' and elem.has_attr('href'):
-                    process_link(elem, current_quality)
+                    href = urljoin(url, elem['href'])
+                    text = elem.get_text().strip()
+                    if not text: text = elem.get('title', '').strip() or "Download Link"
+
+                    # STRICT FILTER: Only keep OxxFile links
+                    if "oxxfile" not in href.lower() and "oxxfile" not in text.lower() and "oxx file" not in text.lower():
+                        continue
+
+                    display_text = f"[{current_quality}] {text}"
+                    links.append({'text': display_text, 'link': href})
 
         return links
     except Exception as e:

@@ -68,34 +68,6 @@ def get_download_links(url):
 
         current_quality = "Unknown Quality"
 
-        # Helper to process a link tag
-        def process_link(link, quality):
-            href = urljoin(url, link['href'])
-            text = link.get_text().strip()
-            if not text:
-                text = link.get('title', '').strip()
-            if not text:
-                text = "Download Link"
-
-            # Filter
-            invalid_patterns = [
-                '/1080p/', '/720p/', '/480p/', '/tg', 'facebook.com',
-                'twitter.com', 'whatsapp://', 'telegram.me/share',
-                'pinterest.com', 'wa.me', 'mailto:', '/how-to-download', '/tgfile'
-            ]
-            if any(p in href for p in invalid_patterns):
-                return
-
-            # Additional filter for nav links
-            if text in ["Prev Article", "Next Article"]:
-                return
-
-            links_data.append({
-                'quality': quality,
-                'text': text,
-                'link': href
-            })
-
         # Iterate through all relevant elements in document order
         for elem in content_div.find_all(['h5', 'h6', 'a']):
             if elem.name in ['h5', 'h6']:
@@ -111,7 +83,22 @@ def get_download_links(url):
                     current_quality = text
 
             elif elem.name == 'a' and elem.has_attr('href'):
-                process_link(elem, current_quality)
+                href = urljoin(url, elem['href'])
+                text = elem.get_text().strip()
+                if not text:
+                    text = elem.get('title', '').strip()
+                if not text:
+                    text = "Download Link"
+
+                # STRICT FILTER: Only keep OxxFile links
+                if "oxxfile" not in href.lower() and "oxxfile" not in text.lower() and "oxx file" not in text.lower():
+                    continue
+
+                links_data.append({
+                    'quality': current_quality,
+                    'text': text,
+                    'link': href
+                })
 
         return links_data
 

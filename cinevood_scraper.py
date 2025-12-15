@@ -61,30 +61,15 @@ def scrape_cinevood(url):
                         href = link['href']
                         text = link.get_text().strip()
 
-                        # Filter out common social share links or navigation links
-                        # Often download links are external or have specific domains
-                        # Domains seen: hubcloud.foo, new7.oxxfile.info
+                        # STRICT FILTER: Only keep OxxFile links
+                        if "oxxfile" in href.lower() or "oxxfile" in text.lower() or "oxx file" in text.lower():
+                             # If the text is empty, try to get it from title attribute
+                             if not text:
+                                 text = link.get('title', '').strip()
 
-                        # Heuristic: Download links usually don't point to facebook, twitter, telegram share, etc.
-                        if any(x in href for x in ['facebook.com', 'twitter.com', 'whatsapp://', 'telegram.me/share']):
-                            continue
+                             if not text:
+                                 text = "Download Link"
 
-                        # If the text is empty, try to get it from title attribute
-                        if not text:
-                            text = link.get('title', '').strip()
-
-                        # If still empty or just "Download", use the href domain or something generic
-                        if not text:
-                            text = "Download Link"
-
-                        # Specific check for known download buttons
-                        is_download_button = False
-                        classes = link.get('class', [])
-                        if any('maxbutton' in c for c in classes):
-                            is_download_button = True
-
-                        # If it looks like a download link
-                        if is_download_button or 'drive' in href or 'file' in href or 'cloud' in href:
                              links.append({
                                  'quality': current_quality,
                                  'text': text,
@@ -99,11 +84,14 @@ def scrape_cinevood(url):
             for a in soup.find_all('a', class_='maxbutton', href=True):
                  text = a.get_text().strip() or a.get('title', '').strip() or "Download"
                  href = a['href']
-                 links.append({
-                     'quality': "Unknown (Fallback)",
-                     'text': text,
-                     'link': href
-                 })
+
+                 # STRICT FILTER for fallback too
+                 if "oxxfile" in href.lower() or "oxxfile" in text.lower() or "oxx file" in text.lower():
+                     links.append({
+                         'quality': "Unknown (Fallback)",
+                         'text': text,
+                         'link': href
+                     })
 
         return links
 
