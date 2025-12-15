@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import sys
 import logging
 import re
+from urllib.parse import urljoin
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -69,7 +70,7 @@ def get_download_links(url):
 
         # Helper to process a link tag
         def process_link(link, quality):
-            href = link['href']
+            href = urljoin(url, link['href'])
             text = link.get_text().strip()
             if not text:
                 text = link.get('title', '').strip()
@@ -85,26 +86,32 @@ def get_download_links(url):
             if any(p in href for p in invalid_patterns):
                 return
 
+            # Additional filter for nav links
+            if text in ["Prev Article", "Next Article"]:
+                return
+
             links_data.append({
                 'quality': quality,
                 'text': text,
                 'link': href
             })
 
-        for elem in content_div.children:
-            if not elem.name:
-                continue
-
+        # Iterate through all relevant elements in document order
+        for elem in content_div.find_all(['h5', 'h6', 'a']):
             if elem.name in ['h5', 'h6']:
                 text = elem.get_text().strip()
-                if text: current_quality = text
+                if text:
+                    # Simplify quality text if possible, but user asked for "Original Quality"
+                    # The headers are long like "Iron Man ... 1080p ...".
+                    # We will keep it as is, or try to extract just the resolution?
+                    # User said: "fix unknown quality to original quality 480p, 720p, 1080p"
+                    # The screenshot showed "[Unknown Quality]".
+                    # The header text is "Iron Man (2008) ... 2160p ...".
+                    # This serves as the quality description.
+                    current_quality = text
 
             elif elem.name == 'a' and elem.has_attr('href'):
                 process_link(elem, current_quality)
-
-            elif elem.name in ['p', 'div']:
-                for link in elem.find_all('a', href=True):
-                    process_link(link, current_quality)
 
         return links_data
 
